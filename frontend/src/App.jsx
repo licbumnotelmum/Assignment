@@ -104,7 +104,7 @@ const App = () => {
               JOB<span className="font-light text-zinc-600">SCHEDULE</span>
             </h1>
             <p className="text-zinc-600 mt-3 font-mono text-xs uppercase tracking-[0.2em] pl-1">
-              // System Orchestration Unit v2.4
+              Schedules your jobs
             </p>
           </div>
           <div className="text-right flex items-center gap-4">

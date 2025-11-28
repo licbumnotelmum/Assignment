@@ -3,6 +3,19 @@
 @tailwind utilities;
 
 
+@keyframes progress-grow {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.animate-pulse-width {
+  width: 0%;
+  animation-name: progress-grow;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+
 body {
   @apply bg-slate-950 text-slate-200;
   font-family: 'Inter', sans-serif;

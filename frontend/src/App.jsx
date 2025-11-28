@@ -1,46 +1,79 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
-  Play, Clock, Server, Plus, Activity, CheckCircle, AlertCircle, 
-  Terminal, PieChart, Cpu, Zap, BarChart3, Database 
+  Play, Clock, Plus, Activity, CheckCircle, AlertCircle, 
+  Terminal, Calendar, BarChart2, ArrowRight, Zap, Cpu
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:5000';
 
 const App = () => {
+  // --- STATE ---
   const [jobs, setJobs] = useState([]);
+  const [scheduledJobs, setScheduledJobs] = useState([]); 
   const [loading, setLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Form State
   const [formData, setFormData] = useState({
     taskName: '',
     priority: 'Low',
     duration: 3000,
+    delay: 0, 
     payload: '{\n  "email": "user@example.com",\n  "type": "report"\n}'
   });
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Poll for updates
+  // --- EFFECTS ---
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 2000); 
+    const interval = setInterval(fetchJobs, 1000); 
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
+  useEffect(() => {
+    if (scheduledJobs.length === 0) return;
+    const timer = setInterval(() => {
+      setScheduledJobs(prev => {
+        const nextState = prev.map(job => ({ ...job, remaining: job.remaining - 1 }));
+        const readyJobs = nextState.filter(j => j.remaining <= 0);
+        const waitingJobs = nextState.filter(j => j.remaining > 0);
+        readyJobs.forEach(job => submitJobToBackend(job.data));
+        return waitingJobs;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [scheduledJobs]);
+
+  // --- API HANDLERS ---
   const fetchJobs = async () => {
     try {
       const res = await axios.get(`${API_URL}/jobs`);
       setJobs(res.data);
     } catch (err) {
-      console.error(err);
+      console.error("Backend offline or error:", err);
     }
   };
 
-  const handleCreate = async (e) => {
+  const submitJobToBackend = async (data) => {
+    try {
+      await axios.post(`${API_URL}/jobs`, data);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error("Failed to auto-submit job", err);
+    }
+  };
+
+  const handleCreateOrSchedule = async (e) => {
     e.preventDefault();
+    if (formData.delay > 0) {
+        setScheduledJobs([...scheduledJobs, { id: Date.now(), remaining: formData.delay, data: { ...formData } }]);
+        setFormData({ ...formData, taskName: '', delay: 0 });
+        return;
+    }
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/jobs`, formData);
+      await submitJobToBackend(formData);
       setFormData({ ...formData, taskName: '' });
-      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       alert("Error: " + err.response?.data?.error);
     } finally {
@@ -58,25 +91,25 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 p-6 lg:p-10 font-sans selection:bg-purple-500 selection:text-white">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen w-full bg-black text-zinc-400 p-6 lg:p-12 font-sans selection:bg-white selection:text-black">
+      <div className="max-w-[1400px] mx-auto space-y-10">
         
         {/* Header */}
-        <header className="flex justify-between items-end border-b border-slate-800 pb-6">
+        <header className="flex justify-between items-end border-b border-zinc-800 pb-8">
           <div>
-            <h1 className="text-4xl font-black bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-400 bg-clip-text text-transparent tracking-tight">
-              NEBULA<span className="text-slate-700 font-thin">ENGINE</span>
+            <h1 className="text-5xl font-black text-white tracking-tighter flex items-center gap-4">
+              <div className="w-10 h-10 bg-white text-black flex items-center justify-center rounded-sm shadow-[0_0_15px_rgba(255,255,255,0.5)]">
+                <Cpu size={24} strokeWidth={2.5} />
+              </div>
+              JOB<span className="font-light text-zinc-600">SCHEDULE</span>
             </h1>
-            <p className="text-slate-500 mt-2 flex items-center gap-2 font-medium">
-              <Server size={16} className="text-purple-500" /> Distributed Job Scheduler
+            <p className="text-zinc-600 mt-3 font-mono text-xs uppercase tracking-[0.2em] pl-1">
+              // System Orchestration Unit v2.4
             </p>
           </div>
           <div className="text-right flex items-center gap-4">
-             <div className="text-xs font-mono text-slate-500 hidden sm:block">
-                v2.4.0-stable
-             </div>
-             <div className="text-xs font-bold font-mono text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-full border border-emerald-400/20 animate-pulse flex items-center gap-2">
-               <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+             <div className="text-[10px] font-bold font-mono text-white border border-zinc-700 bg-zinc-950 px-5 py-2.5 rounded-sm flex items-center gap-3 shadow-lg">
+               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></span>
                SYSTEM ONLINE
              </div>
           </div>
@@ -84,132 +117,154 @@ const App = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* LEFT COLUMN (4 Cols): Inputs & Stats */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* 1. Ring Chart */}
-            <StatusChart jobs={jobs} />
-
-            {/* 2. Create Job Form */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm shadow-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none transition-opacity group-hover:opacity-100 opacity-50"></div>
-              
-              <h2 className="text-lg font-bold mb-5 flex items-center gap-2 text-white">
-                <Plus size={18} className="text-purple-400" /> Dispatch New Job
-              </h2>
-              
-              <form onSubmit={handleCreate} className="space-y-4 relative z-10">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Task Identifier</label>
+          {/* LEFT COLUMN: Dispatch Form */}
+          <div className="lg:col-span-4 h-full">
+            <TechCard title="Dispatch Interface" icon={<Plus size={16} />} height="h-full">
+              <form onSubmit={handleCreateOrSchedule} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Task Identifier</label>
                   <input 
                     type="text" 
                     required
                     value={formData.taskName}
                     onChange={e => setFormData({...formData, taskName: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all placeholder:text-slate-700 text-sm"
-                    placeholder="e.g. Generate Invoice #8841"
+                    className="w-full bg-black border border-zinc-800 p-4 focus:border-white focus:ring-0 outline-none transition-colors placeholder:text-zinc-800 text-sm text-white font-mono shadow-inner"
+                    placeholder="e.g. SYNC_NODE_01"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Priority Level</label>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Priority</label>
                     <select 
                       value={formData.priority}
                       onChange={e => setFormData({...formData, priority: e.target.value})}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 focus:outline-none text-sm appearance-none"
+                      className="w-full bg-black border border-zinc-800 p-4 focus:border-white outline-none text-sm appearance-none text-white shadow-inner"
                     >
                       <option>Low</option>
                       <option>Medium</option>
                       <option>High</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Est. Duration (ms)</label>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Duration (ms)</label>
                     <input 
                       type="number" 
                       value={formData.duration}
                       onChange={e => setFormData({...formData, duration: parseInt(e.target.value)})}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 focus:outline-none text-sm"
+                      className="w-full bg-black border border-zinc-800 p-4 focus:border-white outline-none text-sm text-white font-mono shadow-inner"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Payload Data</label>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex justify-between">
+                        <span>Time Delay</span>
+                        <span className="text-xs text-white font-mono">{formData.delay === 0 ? 'IMMEDIATE' : `+${formData.delay}s`}</span>
+                    </label>
+                    <input 
+                      type="range" 
+                      min="0" max="60" step="5"
+                      value={formData.delay}
+                      onChange={e => setFormData({...formData, delay: parseInt(e.target.value)})}
+                      className="w-full accent-white h-0.5 bg-zinc-800 appearance-none cursor-pointer"
+                    />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Payload</label>
                   <textarea 
-                    rows="3"
+                    rows="8"
                     value={formData.payload}
                     onChange={e => setFormData({...formData, payload: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none text-slate-300 resize-none"
+                    // CHANGED: Added 'resize-y' to allow user to expand the window
+                    className="w-full bg-black border border-zinc-800 p-4 font-mono text-xs focus:border-white outline-none text-zinc-400 resize-y shadow-inner min-h-[150px]"
                   ></textarea>
                 </div>
 
                 <button 
                   disabled={loading}
-                  className="w-full bg-white text-black hover:bg-purple-50 font-bold py-3 rounded-lg transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-[0.98] flex justify-center items-center gap-2 mt-2"
+                  className={`
+                    w-full font-bold py-4 transition-all active:scale-[0.98] flex justify-center items-center gap-2 mt-4 text-xs uppercase tracking-widest border shadow-lg
+                    ${formData.delay > 0 
+                        ? 'bg-zinc-900 text-white border-zinc-600 hover:bg-zinc-800' 
+                        : 'bg-white text-black border-white hover:bg-zinc-200 shadow-white/10'}
+                  `}
                 >
-                  {loading ? 'Dispatching...' : 'Initialize Task'}
+                  {formData.delay > 0 ? (
+                      <><Calendar size={14} /> Schedule</>
+                  ) : (
+                      <><ArrowRight size={14} /> Execute</>
+                  )}
                 </button>
               </form>
-            </div>
+            </TechCard>
           </div>
 
-          {/* RIGHT COLUMN (8 Cols): Dashboard & Data */}
-          <div className="lg:col-span-8 space-y-6">
+          {/* RIGHT COLUMN */}
+          <div className="lg:col-span-8 space-y-8">
             
-            {/* 1. NEW: Performance Metrics Cards */}
-            <MetricsRow jobs={jobs} />
+            {/* Top Row: Terminal & Timeline */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-[340px]">
+                {/* 1. Terminal (Logs) */}
+                <EventTerminal jobs={jobs} />
 
-            {/* 2. NEW: Cluster Health & Worker Visualizer */}
-            <ClusterStatus jobs={jobs} />
+                {/* 2. Live Timeline */}
+                <LiveTimeline jobs={jobs} />
+            </div>
 
-            {/* 3. Job Table */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl min-h-[300px]">
-              <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 backdrop-blur">
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Activity size={18} className="text-indigo-400" /> Active Queue
+            {/* Bottom Row: Active Table */}
+            <div className="relative bg-zinc-950 border border-zinc-800 shadow-[0_0_30px_rgba(255,255,255,0.02)] min-h-[400px]">
+              {/* Corners */}
+              <div className="absolute -top-[1px] -left-[1px] w-3 h-3 border-l-2 border-t-2 border-white z-20"></div>
+              <div className="absolute -top-[1px] -right-[1px] w-3 h-3 border-r-2 border-t-2 border-white z-20"></div>
+              <div className="absolute -bottom-[1px] -left-[1px] w-3 h-3 border-l-2 border-b-2 border-white z-20"></div>
+              <div className="absolute -bottom-[1px] -right-[1px] w-3 h-3 border-r-2 border-b-2 border-white z-20"></div>
+
+              <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider">
+                  <Activity size={16} /> Active Queue
                 </h2>
                 <div className="flex gap-2">
-                   <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-700">
-                     MySQL Database
+                   <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 px-3 py-1 border border-zinc-800 bg-black">
+                     DB: Connected
                    </span>
                 </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-950/30 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
+                  <thead className="bg-black text-zinc-500 uppercase text-[10px] font-bold tracking-widest border-b border-zinc-800">
                     <tr>
-                      <th className="p-4">ID</th>
-                      <th className="p-4">Task Payload</th>
-                      <th className="p-4">Priority</th>
-                      <th className="p-4">State</th>
+                      <th className="p-4 border-r border-zinc-800">ID</th>
+                      <th className="p-4 border-r border-zinc-800">Task</th>
+                      <th className="p-4 border-r border-zinc-800">Priority</th>
+                      <th className="p-4 border-r border-zinc-800">State</th>
                       <th className="p-4 text-right">Controls</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/50">
+                  <tbody className="divide-y divide-zinc-900">
                     {jobs.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-12 text-center text-slate-500 flex flex-col items-center gap-2">
-                          <Database size={32} className="opacity-20 mb-2" />
-                          <span className="text-sm">Database is empty. Dispatch a job to begin.</span>
+                        <td colSpan="5" className="p-16 text-center text-zinc-600 flex flex-col items-center gap-2">
+                          <Activity size={32} strokeWidth={1} className="opacity-30 mb-2" />
+                          <span className="text-xs uppercase tracking-widest">No Active Jobs</span>
                         </td>
                       </tr>
                     ) : (
                       jobs.map((job) => (
-                        <tr key={job.id} className="hover:bg-purple-500/5 transition-colors group">
-                          <td className="p-4 font-mono text-slate-600 text-xs">#{job.id}</td>
-                          <td className="p-4">
-                            <div className="font-bold text-slate-200 text-sm">{job.taskName}</div>
-                            <div className="text-[10px] text-slate-500 truncate max-w-[200px] font-mono mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <tr key={job.id} className="hover:bg-zinc-900/50 transition-colors group">
+                          <td className="p-4 font-mono text-zinc-500 text-xs border-r border-zinc-800">#{job.id}</td>
+                          <td className="p-4 border-r border-zinc-800">
+                            <div className="font-bold text-white text-sm">{job.taskName}</div>
+                            <div className="text-[10px] text-zinc-500 truncate max-w-[200px] font-mono mt-0.5">
                                 {job.payload}
                             </div>
                           </td>
-                          <td className="p-4">
+                          <td className="p-4 border-r border-zinc-800">
                             <PriorityBadge priority={job.priority} />
                           </td>
-                          <td className="p-4">
+                          <td className="p-4 border-r border-zinc-800">
                             <StatusBadge status={job.status} />
                           </td>
                           <td className="p-4 text-right">
@@ -217,10 +272,10 @@ const App = () => {
                               onClick={() => handleRun(job.id)}
                               disabled={job.status === 'running'}
                               className={`
-                                inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all
+                                inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all border
                                 ${job.status === 'running' 
-                                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-transparent' 
-                                  : 'bg-white text-black hover:bg-indigo-50 shadow-lg shadow-white/5 border border-transparent'}
+                                  ? 'bg-black text-zinc-600 border-zinc-800 cursor-not-allowed' 
+                                  : 'bg-white text-black border-white hover:bg-zinc-200 shadow-[0_0_10px_rgba(255,255,255,0.1)]'}
                               `}
                             >
                               {job.status === 'running' ? <Clock size={12} className="animate-spin" /> : <Play size={12} />}
@@ -235,31 +290,6 @@ const App = () => {
               </div>
             </div>
 
-            {/* 4. Terminal */}
-            <div className="bg-[#0a0a0a] border border-slate-800 rounded-2xl p-4 font-mono text-xs h-40 overflow-y-auto shadow-inner relative">
-              <div className="flex items-center gap-2 text-slate-500 mb-3 border-b border-white/5 pb-2 sticky top-0 bg-[#0a0a0a] z-10">
-                <Terminal size={14} className="text-purple-500" /> 
-                <span className="uppercase tracking-wider font-bold text-[10px]">daemon_logs.txt</span>
-              </div>
-              <div className="space-y-1.5 pl-1">
-                {jobs.slice(0, 5).map((job, i) => (
-                  <div key={i} className="opacity-80 flex gap-3 text-[11px]">
-                   <span className="text-slate-700">[{new Date(job.updatedAt).toLocaleTimeString()}]</span>
-                   <span>
-                    {job.status === 'completed' && <span className="text-emerald-500">POST /webhook &bull; 200 OK &bull; {job.duration}ms</span>}
-                    {job.status === 'running' && <span className="text-amber-500">Worker allocated for Task #{job.id}</span>}
-                    {job.status === 'pending' && <span className="text-slate-500">Job #{job.id} pushed to Redis queue</span>}
-                    {job.status === 'failed' && <span className="text-rose-500">Error: Exception in Task #{job.id}</span>}
-                   </span>
-                  </div>
-                ))}
-                <div className="text-purple-500 animate-pulse mt-2 flex items-center gap-2">
-                    <span className="w-1.5 h-3 bg-purple-500 block"></span> 
-                    awaiting input...
-                </div>
-              </div>
-            </div>
-
           </div>
         </div>
       </div>
@@ -267,203 +297,167 @@ const App = () => {
   );
 };
 
-// --- NEW COMPONENT: Performance Metrics ---
-const MetricsRow = ({ jobs }) => {
-    const stats = useMemo(() => {
-        const completed = jobs.filter(j => j.status === 'completed');
-        const total = jobs.length;
-        const successRate = total ? Math.round((completed.length / total) * 100) : 100;
-        
-        // Calculate Avg Duration
-        const totalTime = completed.reduce((acc, curr) => acc + (curr.duration || 3000), 0);
-        const avgTime = completed.length ? Math.round(totalTime / completed.length / 100) / 10 : 0; // in seconds
-
-        return { successRate, avgTime, total };
-    }, [jobs]);
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl backdrop-blur-sm flex items-center gap-4 hover:border-slate-700 transition-colors">
-                <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-400">
-                    <BarChart3 size={24} />
-                </div>
-                <div>
-                    <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Success Rate</div>
-                    <div className="text-2xl font-black text-white">{stats.successRate}%</div>
-                </div>
-            </div>
-
-            <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl backdrop-blur-sm flex items-center gap-4 hover:border-slate-700 transition-colors">
-                <div className="p-3 bg-indigo-500/10 rounded-lg text-indigo-400">
-                    <Zap size={24} />
-                </div>
-                <div>
-                    <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Avg Latency</div>
-                    <div className="text-2xl font-black text-white">{stats.avgTime}s</div>
-                </div>
-            </div>
-
-            <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl backdrop-blur-sm flex items-center gap-4 hover:border-slate-700 transition-colors">
-                <div className="p-3 bg-amber-500/10 rounded-lg text-amber-400">
-                    <Cpu size={24} />
-                </div>
-                <div>
-                    <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Throughput</div>
-                    <div className="text-2xl font-black text-white">{stats.total} <span className="text-xs text-slate-600 font-medium">JOBS</span></div>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-// --- NEW COMPONENT: Cluster Visualizer ---
-const ClusterStatus = ({ jobs }) => {
-    const activeJobs = jobs.filter(j => j.status === 'running').length;
-    
-    // Simulate CPU Usage based on active jobs
-    const cpuLoad = activeJobs > 0 ? 40 + (activeJobs * 10) : 4; 
-    const memoryLoad = 24; // Static base
-
-    return (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 flex flex-col md:flex-row gap-8 items-center justify-between">
-            {/* Left: Text Stats */}
-            <div className="space-y-4 w-full md:w-1/3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Server size={16} className="text-slate-400"/> Node Health
-                </h3>
-                <div className="space-y-3">
-                    <div>
-                        <div className="flex justify-between text-xs text-slate-400 mb-1">
-                            <span>CPU Usage</span>
-                            <span>{cpuLoad}%</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${cpuLoad}%` }}></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div className="flex justify-between text-xs text-slate-400 mb-1">
-                            <span>Memory (RAM)</span>
-                            <span>{memoryLoad}%</span>
-                        </div>
-                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div className="h-full bg-cyan-500 transition-all duration-500" style={{ width: `${memoryLoad}%` }}></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Right: Visual Nodes */}
-            <div className="flex-1 w-full border-l border-slate-800 pl-0 md:pl-8">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Active Worker Threads</div>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {[...Array(8)].map((_, i) => {
-                        const isActive = i < activeJobs;
-                        return (
-                            <div 
-                                key={i} 
-                                className={`
-                                    h-12 rounded-lg border flex items-center justify-center transition-all duration-500
-                                    ${isActive 
-                                        ? 'bg-purple-500/20 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)] scale-105' 
-                                        : 'bg-slate-900 border-slate-800 text-slate-700'}
-                                `}
-                            >
-                                <Zap size={16} className={isActive ? 'animate-pulse' : 'opacity-20'} />
-                            </div>
-                        )
-                    })}
-                </div>
-            </div>
-        </div>
-    )
-}
-
-// --- ORIGINAL CHARTS & BADGES ---
-
-const StatusChart = ({ jobs }) => {
-  const stats = useMemo(() => {
-    const total = jobs.length;
-    const counts = {
-      completed: jobs.filter(j => j.status === 'completed').length,
-      running: jobs.filter(j => j.status === 'running').length,
-      failed: jobs.filter(j => j.status === 'failed').length,
-      pending: jobs.filter(j => j.status === 'pending').length,
-    };
-    return { counts, total };
-  }, [jobs]);
-
-  let centerEmote = "💤";
-  let statusText = "System Idle";
-  let statusColor = "text-slate-500";
-
-  if (stats.total > 0) {
-    if (stats.counts.failed > 0) { centerEmote = "💀"; statusText = "Critical Error"; statusColor = "text-rose-500"; }
-    else if (stats.counts.running > 0) { centerEmote = "🚀"; statusText = "Processing"; statusColor = "text-amber-400"; }
-    else if (stats.counts.pending > 0) { centerEmote = "⏳"; statusText = "Queued"; statusColor = "text-slate-400"; }
-    else if (stats.counts.completed === stats.total) { centerEmote = "✨"; statusText = "All Clear"; statusColor = "text-emerald-400"; }
-  }
-
-  const radius = 35;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
-
-  const data = [
-    { type: 'completed', count: stats.counts.completed, color: '#10b981' }, 
-    { type: 'running', count: stats.counts.running, color: '#f59e0b' },   
-    { type: 'failed', count: stats.counts.failed, color: '#f43f5e' },     
-    { type: 'pending', count: stats.counts.pending, color: '#334155' },   
-  ];
-
+// --- TECH CARD COMPONENT ---
+const TechCard = ({ title, icon, children, height = "h-auto" }) => {
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 flex items-center justify-between shadow-lg backdrop-blur-sm">
-        <div className="relative w-28 h-28 flex items-center justify-center">
-            <svg className="transform -rotate-90 w-full h-full" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r={radius} stroke="#1e293b" strokeWidth="10" fill="none" />
-                {stats.total > 0 && data.map((d, i) => {
-                    const strokeDasharray = `${(d.count / stats.total) * circumference} ${circumference}`;
-                    const strokeDashoffset = -offset;
-                    offset += (d.count / stats.total) * circumference;
-                    if (d.count === 0) return null;
-                    return (
-                        <circle
-                            key={i}
-                            cx="50" cy="50" r={radius}
-                            stroke={d.color}
-                            strokeWidth="10"
-                            fill="none"
-                            strokeDasharray={strokeDasharray}
-                            strokeDashoffset={strokeDashoffset}
-                            strokeLinecap={stats.total === d.count ? "round" : "butt"} 
-                            className="transition-all duration-1000 ease-out"
-                        />
-                    );
-                })}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl animate-bounce-slow filter drop-shadow-lg">{centerEmote}</span>
-            </div>
-        </div>
-        <div className="flex-1 pl-6">
-            <h3 className={`text-sm font-black uppercase tracking-widest ${statusColor} mb-3`}>{statusText}</h3>
-            <div className="space-y-1.5 text-xs font-medium">
-                <div className="flex justify-between text-slate-400"><span>Done</span> <span className="text-emerald-400">{stats.counts.completed}</span></div>
-                <div className="flex justify-between text-slate-400"><span>Active</span> <span className="text-amber-400">{stats.counts.running}</span></div>
-                <div className="flex justify-between text-slate-400"><span>Queue</span> <span className="text-slate-200">{stats.counts.pending}</span></div>
-            </div>
-        </div>
+    <div className={`relative bg-zinc-950 border border-zinc-800 p-6 shadow-[0_0_30px_rgba(255,255,255,0.02)] ${height}`}>
+      <div className="absolute -top-[1px] -left-[1px] w-3 h-3 border-l-2 border-t-2 border-white z-20"></div>
+      <div className="absolute -top-[1px] -right-[1px] w-3 h-3 border-r-2 border-t-2 border-white z-20"></div>
+      <div className="absolute -bottom-[1px] -left-[1px] w-3 h-3 border-l-2 border-b-2 border-white z-20"></div>
+      <div className="absolute -bottom-[1px] -right-[1px] w-3 h-3 border-r-2 border-b-2 border-white z-20"></div>
+
+      <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-6 uppercase tracking-wider border-b border-zinc-900 pb-3">
+        {icon} {title}
+      </h3>
+      <div className="relative z-10">{children}</div>
     </div>
   );
 };
 
+// --- EVENT TERMINAL COMPONENT ---
+const EventTerminal = ({ jobs }) => {
+    // CHANGED: Use a ref for the scroll container instead of a dummy div
+    const scrollContainerRef = useRef(null);
+    
+    const timelineEvents = [...jobs].sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
+
+    // FIXED: Use scrollTop logic instead of scrollIntoView to prevent page jumping
+    useEffect(() => {
+        if (scrollContainerRef.current) {
+            const { scrollHeight, clientHeight } = scrollContainerRef.current;
+            // Only auto-scroll if we are near the bottom (or just force it for a log feel)
+            scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
+        }
+    }, [jobs]); // Triggers whenever jobs update
+
+    return (
+        <TechCard title="System Log" icon={<Terminal size={16} />} height="h-full">
+            <div className="flex flex-col h-[240px] bg-black border border-zinc-800 p-4 font-mono text-xs shadow-inner overflow-hidden">
+                <div className="flex items-center gap-2 text-zinc-600 mb-2 border-b border-zinc-900 pb-2">
+                    <span className="w-2 h-2 bg-zinc-600 rounded-full"></span>
+                    <span className="uppercase tracking-wider font-bold text-[10px]">daemon_stream.log</span>
+                </div>
+                
+                {/* CHANGED: Ref attached here, logic uses scrollTop */}
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                    {timelineEvents.length === 0 && (
+                        <div className="text-zinc-700 italic opacity-50 text-[10px] mt-2">
+                            // Waiting for input stream...
+                        </div>
+                    )}
+                    
+                    {timelineEvents.map((job) => (
+                        <div key={job.id} className="flex gap-3 text-[10px] hover:bg-zinc-900/50 p-0.5 rounded">
+                            <span className="text-zinc-600 font-bold whitespace-nowrap">
+                                [{new Date(job.updatedAt).toLocaleTimeString([], {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'})}]
+                            </span>
+                            <span className="flex-1">
+                                <span className="text-zinc-500 mr-2">JOB_{job.id}</span>
+                                {job.status === 'completed' && <span className="text-white">Process Completed. <span className="text-zinc-500">({job.duration}ms)</span></span>}
+                                {job.status === 'running' && <span className="text-white animate-pulse">Processing Payload...</span>}
+                                {job.status === 'pending' && <span className="text-zinc-500">Received & Queued.</span>}
+                                {job.status === 'failed' && <span className="text-zinc-600 line-through">Error in execution.</span>}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </TechCard>
+    );
+};
+
+// --- LIVE TIMELINE COMPONENT ---
+const LiveTimeline = ({ jobs }) => {
+    const runningJobs = jobs.filter(j => j.status === 'running');
+
+    return (
+        <TechCard title="Live Execution" icon={<BarChart2 size={16} />} height="h-full">
+            <style>{`
+                @keyframes smoothProgress {
+                    from { width: 0%; }
+                    to { width: 100%; }
+                }
+                .animate-progress-smooth {
+                    animation-name: smoothProgress;
+                    animation-timing-function: linear;
+                    animation-fill-mode: forwards;
+                }
+            `}</style>
+
+            {runningJobs.length > 0}
+
+            <div className="h-[240px] flex flex-col">
+                <div className="flex-1 overflow-y-auto pr-1 space-y-4 custom-scrollbar">
+                    {runningJobs.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-zinc-700 space-y-3 opacity-60">
+                            <div className="w-16 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                                <div className="h-full w-1/3 bg-zinc-800 animate-[shimmer_2s_infinite]"></div>
+                            </div>
+                            <span className="text-[10px] font-mono uppercase tracking-widest">Idle State</span>
+                        </div>
+                    ) : (
+                        runningJobs.map(job => (
+                            <ActiveJobBar key={job.id} job={job} />
+                        ))
+                    )}
+                </div>
+            </div>
+        </TechCard>
+    )
+}
+
+const ActiveJobBar = ({ job }) => {
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setElapsed(prev => {
+                const next = prev + 50;
+                return next > job.duration ? job.duration : next;
+            });
+        }, 50);
+        return () => clearInterval(interval);
+    }, [job.duration]);
+
+    const formatTime = (ms) => (ms / 1000).toFixed(1) + 's';
+
+    return (
+        <div className="relative group p-1">
+            <div className="flex justify-between text-[10px] uppercase font-bold text-zinc-500 mb-2 items-end">
+                <span className="text-white flex items-center gap-1.5">
+                    <Zap size={12} />
+                    Task #{job.id}
+                </span>
+                <span className="font-mono text-white bg-black px-1.5 border border-zinc-800">
+                    {formatTime(elapsed)} / {formatTime(job.duration)}
+                </span>
+            </div>
+            
+            <div className="w-full h-4 bg-black border border-zinc-700 relative p-[2px] shadow-inner">
+                <div 
+                    className="h-full bg-white animate-progress-smooth relative"
+                    style={{ animationDuration: `${job.duration}ms` }}
+                ></div>
+            </div>
+            
+            <div className="text-[9px] text-zinc-500 mt-1.5 font-mono flex justify-between px-1">
+                <span>{job.taskName}</span>
+                <span className="animate-pulse text-white">EXECUTING...</span>
+            </div>
+        </div>
+    );
+};
+
+// --- BADGES ---
+
 const PriorityBadge = ({ priority }) => {
   const styles = {
-    High: "text-rose-400 bg-rose-400/10 border-rose-400/20 shadow-[0_0_10px_rgba(244,63,94,0.2)]",
-    Medium: "text-amber-400 bg-amber-400/10 border-amber-400/20",
-    Low: "text-slate-400 bg-slate-400/10 border-slate-400/20",
+    High: "text-black bg-white border-white",
+    Medium: "text-white bg-black border-white",
+    Low: "text-zinc-500 bg-black border-zinc-800",
   };
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border ${styles[priority] || styles.Low}`}>
+    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border ${styles[priority] || styles.Low}`}>
       {priority}
     </span>
   );
@@ -472,26 +466,23 @@ const PriorityBadge = ({ priority }) => {
 const StatusBadge = ({ status }) => {
   if (status === 'running') {
     return (
-      <span className="flex items-center gap-2 text-amber-400 text-[10px] font-bold uppercase tracking-widest">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-        </span>
-        Processing
+      <span className="flex items-center gap-2 text-white text-[10px] font-bold uppercase tracking-widest">
+        <span className="w-1.5 h-1.5 bg-white animate-pulse"></span>
+        Active
       </span>
     );
   }
   if (status === 'completed') {
     return (
-      <span className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-        <CheckCircle size={14} /> Success
+      <span className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-widest decoration-zinc-600">
+        <CheckCircle size={12} /> Done
       </span>
     );
   }
   if (status === 'pending') {
-    return <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Queued</span>;
+    return <span className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest">Queued</span>;
   }
-  return <span className="text-rose-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><AlertCircle size={14}/> Error</span>;
+  return <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><AlertCircle size={12}/> Failed</span>;
 };
 
 export default App;

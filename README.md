@@ -97,9 +97,9 @@ npm run dev
 
 WEB_URL = 'your/webhook/link'
 DBUSER= 'mysqluser'
-DBPORT = integer value of mysql port on which it runs
+DBPORT = integer value of mysql port, on which it runs
 DBPASSWORD = 'passwordForDBUSER'
-DATABAE = 'dotix_scheduler'
+DATABAE = 'databaseUsedInMySQLForTableCreation'
 
 8. File Structure (uploading the .env file to git for reference otherwise .gitignore would have the env file)
 

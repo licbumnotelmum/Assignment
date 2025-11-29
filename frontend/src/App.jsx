@@ -8,13 +8,13 @@ import {
 const API_URL = 'http://localhost:5000';
 
 const App = () => {
-  // --- STATE ---
+  // state
   const [jobs, setJobs] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]); 
   const [loading, setLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   
-  // Form State
+  // from state
   const [formData, setFormData] = useState({
     taskName: '',
     priority: 'Low',
@@ -23,7 +23,7 @@ const App = () => {
     payload: '{\n  "email": "user@example.com",\n  "type": "report"\n}'
   });
 
-  // --- EFFECTS ---
+  // effects
   useEffect(() => {
     fetchJobs();
     const interval = setInterval(fetchJobs, 1000); 
@@ -44,7 +44,7 @@ const App = () => {
     return () => clearInterval(timer);
   }, [scheduledJobs]);
 
-  // --- API HANDLERS ---
+  //API handler
   const fetchJobs = async () => {
     try {
       const res = await axios.get(`${API_URL}/jobs`);
@@ -117,7 +117,7 @@ const App = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* LEFT COLUMN: Dispatch Form */}
+          {/* left column: dispatch Form */}
           <div className="lg:col-span-4 h-full">
             <TechCard title="Dispatch Interface" icon={<Plus size={16} />} height="h-full">
               <form onSubmit={handleCreateOrSchedule} className="space-y-6">
@@ -201,15 +201,15 @@ const App = () => {
             </TechCard>
           </div>
 
-          {/* RIGHT COLUMN */}
+          {/* right column */}
           <div className="lg:col-span-8 space-y-8">
             
-            {/* Top Row: Terminal & Timeline */}
+            {/* Top Row: log, timeline */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-[340px]">
-                {/* 1. Terminal (Logs) */}
+                {/* logs */}
                 <EventTerminal jobs={jobs} />
 
-                {/* 2. Live Timeline */}
+                {/* live timeline */}
                 <LiveTimeline jobs={jobs} />
             </div>
 
@@ -297,7 +297,7 @@ const App = () => {
   );
 };
 
-// --- TECH CARD COMPONENT ---
+// tech card
 const TechCard = ({ title, icon, children, height = "h-auto" }) => {
   return (
     <div className={`relative bg-zinc-950 border border-zinc-800 p-6 shadow-[0_0_30px_rgba(255,255,255,0.02)] ${height}`}>
@@ -316,19 +316,17 @@ const TechCard = ({ title, icon, children, height = "h-auto" }) => {
 
 // --- EVENT TERMINAL COMPONENT ---
 const EventTerminal = ({ jobs }) => {
-    // CHANGED: Use a ref for the scroll container instead of a dummy div
     const scrollContainerRef = useRef(null);
     
     const timelineEvents = [...jobs].sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
 
-    // FIXED: Use scrollTop logic instead of scrollIntoView to prevent page jumping
     useEffect(() => {
         if (scrollContainerRef.current) {
             const { scrollHeight, clientHeight } = scrollContainerRef.current;
             // Only auto-scroll if we are near the bottom (or just force it for a log feel)
             scrollContainerRef.current.scrollTop = scrollHeight - clientHeight;
         }
-    }, [jobs]); // Triggers whenever jobs update
+    }, [jobs]); // Triggers whenever job is updated
 
     return (
         <TechCard title="System Log" icon={<Terminal size={16} />} height="h-full">
@@ -338,7 +336,7 @@ const EventTerminal = ({ jobs }) => {
                     <span className="uppercase tracking-wider font-bold text-[10px]">daemon_stream.log</span>
                 </div>
                 
-                {/* CHANGED: Ref attached here, logic uses scrollTop */}
+                
                 <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
                     {timelineEvents.length === 0 && (
                         <div className="text-zinc-700 italic opacity-50 text-[10px] mt-2">
@@ -409,6 +407,9 @@ const LiveTimeline = ({ jobs }) => {
 const ActiveJobBar = ({ job }) => {
     const [elapsed, setElapsed] = useState(0);
 
+
+
+
     useEffect(() => {
         const interval = setInterval(() => {
             setElapsed(prev => {
@@ -448,7 +449,7 @@ const ActiveJobBar = ({ job }) => {
     );
 };
 
-// --- BADGES ---
+// pririty bagdes
 
 const PriorityBadge = ({ priority }) => {
   const styles = {

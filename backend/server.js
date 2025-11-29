@@ -9,15 +9,16 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// --- CONFIGURATION ---
+// setuped a new user dotix_user because linux didnt like root user
+
 const DB_CONFIG = {
     host: 'localhost',
-    user: 'dotix_user', 
-    port : 51214,
-    password: '123456',  // <--- Updated password
-    database: 'dotix_scheduler'
+    user: process.env.DBUSER, 
+    port : process.env.DBPORT,
+    password: process.env.DBPASSWORD,
+    database: process.env.DATABAE
 };
-const WEBHOOK_URL = 'http://localhost:5000/webhook-test'; // Using local for demo, or use https://webhook.site/...
+const WEBHOOK_URL = process.env.WEB_URL;
 
 // --- DATABASE CONNECTION ---
 const pool = mysql.createPool(DB_CONFIG);
@@ -70,13 +71,29 @@ class JobProcessor {
             completedAt: new Date().toISOString()
         };
 
-        console.log(`[Job ${job.id}] Triggering Webhook...`);
+        console.log(`[Job ${job.id}] 🚀 Attempting to send webhook to: ${WEBHOOK_URL}`);
         
         try {
-            await axios.post(WEBHOOK_URL, payload);
-            console.log(`[Job ${job.id}] Webhook Sent Successfully.`);
+            const response = await axios.post(WEBHOOK_URL, payload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 5000 // Fail if it takes longer than 5 seconds
+            });
+            console.log(`[Job ${job.id}] Webhook Success, Status: ${response.status}`);
         } catch (err) {
-            console.error(`[Job ${job.id}] Webhook Failed:`, err.message);
+            console.error("------------------------------------------------");
+            console.error(`[Job ${job.id}] WEBHOOK FAILED`);
+            if (err.response) {
+                // The server responded with a status code other than 2xx
+                console.error(`Status Code: ${err.response.status}`);
+                console.error(`Response Data:`, err.response.data);
+            } else if (err.request) {
+                // The request was made but no response was received
+                console.error("No response received. Is the target URL correct?");
+            } else {
+                // Something happened in setting up the request
+                console.error("Error Message:", err.message);
+            }
+            console.error("------------------------------------------------");
         }
     }
 }
@@ -136,5 +153,5 @@ app.post('/webhook-test', (req, res) => {
 
 const PORT = 5000;
 app.listen(PORT, () => {
-    console.log(`Backend running on http://localhost:${PORT}`);
+    console.log(`Backend running on `,WEBHOOK_URL);
 });

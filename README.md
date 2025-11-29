@@ -101,6 +101,21 @@ DBPORT = integer value of mysql port on which it runs
 DBPASSWORD = 'passwordForDBUSER'
 DATABAE = 'dotix_scheduler'
 
+8. File Structure (uploading the .env file to git for reference otherwise .gitignore would have the env file)
+
+ASSIGNMENT
+|->Backend
+|  |->.env
+|  |->server.js
+|
+|->frontend
+|  |->App.cdd
+|  |->App.jsx
+|  |->index.css
+|  |->main.jsx
+|  
+|->README.md
+
 AI Usage 
 
 Tools Used: ChatGPT, Gemini for boilerplate generation and debugging.

@@ -20,20 +20,20 @@ const DB_CONFIG = {
 };
 const WEBHOOK_URL = process.env.WEB_URL;
 
-// --- DATABASE CONNECTION ---
+// Mysql pool connection
 const pool = mysql.createPool(DB_CONFIG);
 
-// --- LOGIC: JOB PROCESSOR CLASS (Stand-out Logic) ---
+// job processor class
 class JobProcessor {
-    // Updates job status in DB
+    // Updates status in DB
     static async updateStatus(id, status) {
         await pool.query('UPDATE jobs SET status = ? WHERE id = ?', [status, id]);
     }
 
-    // The core runner logic
+    // The core runner 
     static async run(jobId) {
         try {
-            // 1. Fetch Job
+            // Fetch Job
             const [rows] = await pool.query('SELECT * FROM jobs WHERE id = ?', [jobId]);
             if (rows.length === 0) throw new Error('Job not found');
             const job = rows[0];
@@ -42,16 +42,16 @@ class JobProcessor {
 
             console.log(`[Job ${jobId}] Started: ${job.taskName}`);
             
-            // 2. Set Status -> Running
+            // Set Status -> Running
             await this.updateStatus(jobId, 'running');
 
-            // 3. Simulate Processing (Dynamic Duration)
+            // Simulate Processing
             await new Promise(resolve => setTimeout(resolve, job.duration || 3000));
 
-            // 4. Set Status -> Completed
+            // Set Status -> Completed
             await this.updateStatus(jobId, 'completed');
 
-            // 5. Trigger Webhook
+            // Trigger Webhook
             await this.triggerWebhook(job);
             
             return { success: true, message: "Job completed successfully" };
@@ -76,21 +76,19 @@ class JobProcessor {
         try {
             const response = await axios.post(WEBHOOK_URL, payload, {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 5000 // Fail if it takes longer than 5 seconds
+                timeout: 5000 // Fail if it takes longer than 5000 ms
             });
             console.log(`[Job ${job.id}] Webhook Success, Status: ${response.status}`);
         } catch (err) {
             console.error("------------------------------------------------");
             console.error(`[Job ${job.id}] WEBHOOK FAILED`);
             if (err.response) {
-                // The server responded with a status code other than 2xx
+                // respondes with a status code other than 200
                 console.error(`Status Code: ${err.response.status}`);
                 console.error(`Response Data:`, err.response.data);
             } else if (err.request) {
-                // The request was made but no response was received
                 console.error("No response received. Is the target URL correct?");
             } else {
-                // Something happened in setting up the request
                 console.error("Error Message:", err.message);
             }
             console.error("------------------------------------------------");
@@ -98,13 +96,12 @@ class JobProcessor {
     }
 }
 
-// --- API ROUTES ---
+// / API
 
-// 1. Create Job
+// job creation
 app.post('/jobs', async (req, res) => {
     const { taskName, payload, priority, duration } = req.body;
     try {
-        // Validate JSON payload
         try { JSON.parse(payload); } catch (e) { return res.status(400).json({ error: "Invalid JSON payload" }); }
 
         const [result] = await pool.query(
@@ -117,7 +114,7 @@ app.post('/jobs', async (req, res) => {
     }
 });
 
-// 2. List Jobs
+// job listing
 app.get('/jobs', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM jobs ORDER BY createdAt DESC');
@@ -127,27 +124,20 @@ app.get('/jobs', async (req, res) => {
     }
 });
 
-// 3. Run Job
-app.post('/run-job/:id', async (req, res) => {
-    // We don't await the processor here to allow the UI to return immediately
-    // However, for this simplified test, let's await it to show errors clearly
-    // or trigger it asynchronously. Let's trigger async to mimic real background workers.
-    
+// Run Job
+app.post('/run-job/:id', async (req, res) => {  
     const jobId = req.params.id;
     
-    // Fire and forget (Async Architecture)
     JobProcessor.run(jobId).catch(err => console.error(err));
 
     res.json({ message: `Job ${jobId} execution started` });
 });
 
-// 4. Test Webhook Receiver (Local)
+// Test Webhook Receiver
 app.post('/webhook-test', (req, res) => {
     const event = req.body;
     console.log("WEBHOOK RECEIVED:", JSON.stringify(event, null, 2));
-    
-    // In a real app, you might use Socket.io to push this to frontend
-    // For now, we just log it.
+ 
     res.json({ received: true });
 });
 
